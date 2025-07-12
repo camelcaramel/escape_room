@@ -15,6 +15,7 @@ export default class GameScene extends Phaser.Scene {
     this.gameData = data.gameData || {
       currentQuestionIndex: 0,
       correctStreak: 0,
+      before_index: -1,
       items: {
         hint: 0, // 테스트를 위해 아이템 1개씩 지급
         timeMachine: 0,
@@ -34,6 +35,7 @@ export default class GameScene extends Phaser.Scene {
       frameHeight: 48, // 각 프레임의 세로 크기
     });
     this.load.image("portal", "assets/images/portal.png");
+    this.load.image("portal_open", "assets/images/portal_open.png");
     this.load.image("dpad_arrow", "assets/images/dpad_arrow.png");
 
     // --- 사운드 파일 로드 ---
@@ -42,11 +44,20 @@ export default class GameScene extends Phaser.Scene {
 
     // --- 뽑기 카드 이미지 로드 ---
     this.load.image("card", "assets/images/card.png");
+
+    this.load.image("bg_traffic", "assets/images/bg_traffic.png");
+    this.load.image("bg_water", "assets/images/bg_water.png");
+    this.load.image("bg_heatwave", "assets/images/bg_heatwave.png");
+    this.load.image("bg_default_room", "assets/images/bg_default_room.png");
   }
 
   create() {
     this.quizData = this.cache.json.get("quizData");
     const { width, height } = this.scale;
+    // --- 배경 이미지 객체 생성 ---
+    this.background = this.add
+      .image(width / 2, height / 2, "bg_traffic")
+      .setDepth(0);
 
     // --- 애니메이션 생성 ---
     this.createPlayerAnimations();
@@ -58,20 +69,34 @@ export default class GameScene extends Phaser.Scene {
     this.player.setPosition(width / 2, height - 100); // 플레이어 초기 위치 설정
     //TODO:플레이어 초기 위치 및 크기 조정
     this.player.setCollideWorldBounds(true).setScale(3).setDepth(10); // 캐릭터 크기 약간 키움
+    // --- UI 생성 ---
+    const padding = 10; // 텍스트와 배경 사이의 여백
+    const cornerRadius = 8; // 라운드 박스의 둥근 정도
 
-    // --- UI 생성 (이전과 동일) ---
+    // Graphics 객체를 생성하여 배경을 그립니다.
+    this.uiBackground = this.add.graphics().setDepth(5);
+
+    // 테마 텍스트
     this.themeText = this.add
       .text(width / 2, 180, "", { fontSize: "28px", color: "#fff" })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(6); // 텍스트가 배경보다 위에 오도록 설정
+
+    // 진행도 텍스트
     this.progressText = this.add
       .text(width - 20, 20, "", { fontSize: "20px", color: "#fff" })
-      .setOrigin(1, 0);
+      .setOrigin(1, 0)
+      .setDepth(6);
+
+    // 타이머 텍스트
     this.totalTimerText = this.add
-      .text(width - 20, 50, "총 시간: 00:00", {
+      .text(width - 20, 70, "총 시간: 00:00", {
         fontSize: "16px",
         color: "#fff",
       })
-      .setOrigin(1, 0);
+      .setOrigin(1, 0)
+      .setDepth(6);
+
     this.time.addEvent({
       delay: 100, // 0.1초마다 업데이트하여 부드럽게 표시
       callback: this.updateTotalTimer,
@@ -86,7 +111,8 @@ export default class GameScene extends Phaser.Scene {
         align: "center",
         wordWrap: { width: width - 40 },
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(6);
 
     this.portals = this.physics.add.group();
     this.physics.add.overlap(
@@ -100,10 +126,12 @@ export default class GameScene extends Phaser.Scene {
     // --- 가상 D-패드 생성 ---
     // this.createDPad();
 
-    this.itemText = this.add.text(20, 20, "", {
-      fontSize: "16px",
-      color: "#fff",
-    });
+    this.itemText = this.add
+      .text(20, 20, "", {
+        fontSize: "16px",
+        color: "#fff",
+      })
+      .setDepth(6);
 
     this.updateItemUI();
 
@@ -122,6 +150,30 @@ export default class GameScene extends Phaser.Scene {
       this.useHint();
     });
     this.updateItemUI(); // UI 초기 업데이트
+
+    this.explanationBackground = this.add
+      .rectangle(
+        width / 2,
+        height / 2,
+        width * 0.9,
+        height * 0.3,
+        0x000000,
+        0.8
+      )
+      .setOrigin(0.5)
+      .setDepth(20)
+      .setVisible(false);
+
+    this.explanationText = this.add
+      .text(width / 2, height / 2, "", {
+        fontSize: "20px",
+        color: "#fff",
+        align: "center",
+        wordWrap: { width: width * 0.8 },
+      })
+      .setOrigin(0.5)
+      .setDepth(21)
+      .setVisible(false);
 
     this.displayQuestion();
   }
@@ -171,14 +223,62 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  update() {}
+  // GameScene.js 의 비어있는 update() 함수를 아래 코드로 채워주세요.
+
+  update() {
+    // 플레이어가 이동 중이거나, 아이템 뽑기 중일 때는 로직을 실행하지 않습니다.
+    if (this.isPlayerMoving || (this.gachaGroup && this.gachaGroup.active)) {
+      return;
+    }
+
+    const openDistance = 150; // 포털이 열리기 시작하는 거리 (px 단위, 값 조절 가능)
+    let closestPortal = null;
+    let minDistance = Infinity;
+
+    // 1. 모든 포털을 순회하며 플레이어와 가장 가까운 포털을 찾습니다.
+    this.portals.getChildren().forEach((portal) => {
+      // 힌트 사용으로 비활성화된 포털은 제외합니다.
+      if (portal.getData("isDisabled")) {
+        return;
+      }
+
+      const distance = Phaser.Math.Distance.Between(
+        this.player.x,
+        this.player.y,
+        portal.x,
+        portal.y
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestPortal = portal;
+      }
+    });
+
+    // 2. 모든 포털의 이미지를 우선 '닫힌' 상태로 되돌립니다.
+    this.portals.getChildren().forEach((portal) => {
+      // 힌트 사용으로 비활성화된 포털은 색상(tint)을 유지합니다.
+      if (!portal.getData("isDisabled")) {
+        portal.setTexture("portal");
+      }
+    });
+
+    // 3. 가장 가까운 포털이 정해진 거리 안에 있다면, '열린' 이미지로 변경합니다.
+    if (closestPortal && minDistance < openDistance) {
+      // 힌트로 비활성화 되지 않은 포털만 열립니다.
+      if (!closestPortal.getData("isDisabled")) {
+        closestPortal.setTexture("portal_open");
+      }
+    }
+  }
 
   startCardSelection() {
     this.gameData.correctStreak = 0;
 
     const overlay = this.add
       .rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.7)
-      .setOrigin(0);
+      .setOrigin(0)
+      .setDepth(7);
     const gachaText = this.add
       .text(this.scale.width / 2, 150, "3연속 정답! 카드를 선택하세요.", {
         fontSize: "32px",
@@ -223,7 +323,8 @@ export default class GameScene extends Phaser.Scene {
       const card = this.add
         .sprite(cardX, this.scale.height / 2, "card") // 계산된 x 위치 적용
         .setScale(cardScale) // 변수로 스케일 설정
-        .setInteractive();
+        .setInteractive()
+        .setDepth(7);
       // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
 
       // 섞인 보상을 각 카드에 'outcome'이라는 데이터로 저장합니다.
@@ -335,12 +436,44 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
+    switch (questionData.theme) {
+      case "교통 안전":
+      case "화재 대피의 방": // 화재/지진 등도 교통안전 배경을 같이 사용할 경우
+      case "지진 대피의 방":
+        this.background.setTexture("bg_traffic");
+        break;
+      case "물놀이 안전":
+        this.background.setTexture("bg_water");
+        break;
+      case "폭염 안전":
+        this.background.setTexture("bg_heatwave");
+        break;
+      default: // 응급처치 및 기타 테마
+        this.background.setTexture("bg_default_room");
+        break;
+    }
+
     // 상단 UI 텍스트 업데이트
     this.themeText.setText(questionData.theme);
     this.questionText.setText(questionData.question);
     this.progressText.setText(
       `${this.gameData.currentQuestionIndex + 1} / ${this.quizData.length}`
     );
+
+    // ▼▼▼▼▼ UI 배경 그리기 (추가) ▼▼▼▼▼
+    this.uiBackground.clear(); // 이전에 그린 배경을 모두 지웁니다.
+    this.uiBackground.fillStyle(0x000000, 0.6); // 검은색, 60% 불투명도
+
+    const padding = 10;
+    const cornerRadius = 8;
+
+    // 각 텍스트 객체의 사이즈에 맞춰 배경을 다시 그립니다.
+    this.drawTextBackground(this.themeText, padding, cornerRadius);
+    this.drawTextBackground(this.progressText, padding, cornerRadius);
+    this.drawTextBackground(this.totalTimerText, padding, cornerRadius);
+    this.drawTextBackground(this.questionText, padding, cornerRadius);
+    this.drawTextBackground(this.itemText, padding, cornerRadius);
+    // ▲▲▲▲▲ UI 배경 그리기 (추가) ▲▲▲▲▲
 
     // 기존 포털 및 텍스트 오브젝트 정리
     this.portals.clear(true, true);
@@ -391,7 +524,12 @@ export default class GameScene extends Phaser.Scene {
           align: "center",
           wordWrap: { width: 120 },
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setDepth(6); // 텍스트가 배경 위에 오도록
+
+      // ▼▼▼▼▼ 선택지 텍스트 배경 그리기 (추가) ▼▼▼▼▼
+      this.drawTextBackground(choiceText, 5, 5); // 선택지는 좀 더 작은 여백
+      // ▲▲▲▲▲ 선택지 텍스트 배경 그리기 (추가) ▲▲▲▲▲
       this.choiceTexts.push(choiceText);
     });
   }
@@ -399,8 +537,8 @@ export default class GameScene extends Phaser.Scene {
   revealCard(selectedCard) {
     const itemKoreanNames = {
       hint: "힌트",
-      timeMachine: "타임 머신",
-      tieAsWin: "무승부도 승리",
+      timeMachine: "미래 보기",
+      tieAsWin: "무승부도\n 승리",
     };
     const cardWidth = selectedCard.displayWidth;
     const cardHeight = selectedCard.displayHeight;
@@ -415,13 +553,15 @@ export default class GameScene extends Phaser.Scene {
         // 절차적 카드 배경 생성
         const cardBG = this.add.graphics();
         cardBG.fillStyle(isDud ? 0x666666 : 0x888888, 1); // 꽝은 어둡게, 아이템은 밝게
-        cardBG.fillRoundedRect(
-          child.x - cardWidth / 2,
-          child.y - cardHeight / 2,
-          cardWidth,
-          cardHeight,
-          16
-        );
+        cardBG
+          .fillRoundedRect(
+            child.x - cardWidth / 2,
+            child.y - cardHeight / 2,
+            cardWidth,
+            cardHeight,
+            16
+          )
+          .setDepth(9); // 카드 배경이 텍스트 위에 오도록 설정
         this.gachaGroup.add(cardBG);
 
         // 결과 텍스트 생성
@@ -433,7 +573,8 @@ export default class GameScene extends Phaser.Scene {
             color: resultColor,
             fontStyle: "bold",
           })
-          .setOrigin(0.5);
+          .setOrigin(0.5)
+          .setDepth(10); // 텍스트가 카드 배경 위에 오도록 설정
         this.gachaGroup.add(resultDisplay);
 
         // 원래 카드 이미지는 숨김 처리
@@ -459,7 +600,8 @@ export default class GameScene extends Phaser.Scene {
             fontStyle: "bold",
           }
         )
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setDepth(10);
     } else {
       // 꽝!
       rewardText = this.add
@@ -473,7 +615,8 @@ export default class GameScene extends Phaser.Scene {
             fontStyle: "bold",
           }
         )
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setDepth(10);
     }
     this.gachaGroup.add(rewardText);
 
@@ -506,79 +649,72 @@ export default class GameScene extends Phaser.Scene {
       onComplete: () => {
         this.player.anims.play("idle");
         this.isPlayerMoving = false;
-        this.player.setPosition(this.scale.width / 2, this.scale.height - 50);
-        this.player.setFlipX(false);
-        if (isCorrect) {
-          this.sound.play("correct");
-          console.log("정답!");
-          this.gameData.correctStreak++; // 연속 정답 횟수 증가
-          this.gameData.currentQuestionIndex++;
 
-          this.cameras.main.flash(500, 0, 255, 0);
-          if (this.gameData.correctStreak >= 3) {
-            this.startCardSelection(); // <-- 호출 함수 변경
+        // ▼▼▼▼▼ 여기부터 수정 ▼▼▼▼▼
+
+        // 1. 해설 텍스트 설정 및 UI 표시
+        this.explanationText.setText(
+          this.quizData[this.gameData.currentQuestionIndex].explanation
+        );
+        this.explanationBackground.setVisible(true);
+        this.explanationText.setVisible(true);
+
+        // 2. 3초 후 다음 단계로 진행
+        this.time.delayedCall(3000, () => {
+          // 해설 UI 숨기기
+          this.explanationBackground.setVisible(false);
+          this.explanationText.setVisible(false);
+
+          // 플레이어 위치 초기화
+          this.player.setPosition(
+            this.scale.width / 2,
+            this.scale.height - 100
+          );
+          this.player.setFlipX(false);
+
+          if (isCorrect) {
+            this.sound.play("correct");
+            console.log("정답!");
+            this.gameData.correctStreak++;
+            if (
+              this.gameData.before_index == this.gameData.currentQuestionIndex
+            ) {
+              this.gameData.correctStreak--;
+            }
+            this.gameData.currentQuestionIndex++;
+
+            this.cameras.main.flash(500, 0, 255, 0);
+
+            if (this.gameData.currentQuestionIndex >= this.quizData.length) {
+              this.gameData.endTime = this.time.now;
+              this.scene.start("GameClearScene", {
+                playerInfo: this.playerInfo,
+                gameData: this.gameData,
+              });
+              return;
+            }
+
+            if (this.gameData.correctStreak >= 3) {
+              this.startCardSelection();
+            } else {
+              this.displayQuestion();
+            }
           } else {
-            this.time.delayedCall(500, () => this.displayQuestion());
-          }
-          if (this.gameData.currentQuestionIndex >= this.quizData.length) {
-            // 모든 문제를 클리어했을 경우
-            console.log("모든 문제를 클리어했습니다!");
-            this.gameData.endTime = this.time.now; // 게임 종료 시간 기록
-            // GameClearScene으로 이동할 때, 현재 playerInfo와 gameData를 전달
-            this.scene.start("GameClearScene", {
-              playerInfo: this.playerInfo,
-              gameData: this.gameData,
-            });
-            return;
-          }
-        } else {
-          this.sound.play("incorrect");
-          console.log("오답! 패널티 방으로 이동합니다.");
-          this.gameData.correctStreak = 0;
+            this.sound.play("incorrect");
+            console.log("오답! 패널티 방으로 이동합니다.");
+            this.gameData.correctStreak = 0;
+            this.gameData.before_index = this.gameData.currentQuestionIndex; // 현재 문제 인덱스를 저장
 
-          this.cameras.main.shake(500, 0.02);
-          this.time.delayedCall(500, () => {
-            // --- 수정된 부분 ---
+            this.cameras.main.shake(500, 0.02);
             this.scene.start("PenaltyScene", {
               playerInfo: this.playerInfo,
-              gameData: this.gameData, // gameData 객체를 그대로 전달
+              gameData: this.gameData,
               theme: this.quizData[this.gameData.currentQuestionIndex].theme,
             });
-          });
-        }
+          }
+        });
       },
     });
-  }
-
-  handlePortalCollision(player, portal) {
-    // if (this.portalCollisionHandled) {
-    //   return; // 이미 처리되었다면 아무것도 하지 않고 함수를 종료합니다.
-    // }
-    // // 플래그를 true로 설정하여 중복 실행을 방지합니다.
-    // this.portalCollisionHandled = true;
-    // // (이전 코드와 동일)
-    // player.setVelocity(0);
-    // this.player.anims.play("idle"); // 포털 진입 시 정지 애니메이션
-    // this.portals.children.each((p) => (p.body.enable = false));
-    // if (portal.getData("isCorrect")) {
-    //   console.log("정답!");
-    //   this.gameData.currentQuestionIndex++;
-    //   this.cameras.main.flash(500, 0, 255, 0);
-    //   this.time.delayedCall(500, () => this.displayQuestion());
-    // } else {
-    //   console.log("오답! 패널티 방으로 이동합니다.");
-    //   this.cameras.main.shake(500, 0.02);
-    //   this.time.delayedCall(500, () => {
-    //     // 현재 상태를 가지고 패널티 씬으로 이동
-    //     this.scene.start("PenaltyScene", {
-    //       ...this.playerInfo,
-    //       returnScene: "GameScene",
-    //       gameData: this.gameData, // gameData 객체를 그대로 전달
-    //       currentQuestionIndex: this.gameData.currentQuestionIndex,
-    //       theme: this.quizData[this.gameData.currentQuestionIndex].theme, // <-- 이 줄을 추가합니다.
-    //     });
-    //   });
-    // }
   }
 
   // 초(seconds)를 MM:SS 형식의 문자열로 변환하는 함수
@@ -594,5 +730,17 @@ export default class GameScene extends Phaser.Scene {
   updateTotalTimer() {
     const elapsedTime = (this.time.now - this.gameData.startTime) / 1000;
     this.totalTimerText.setText(`총 시간: ${this.formatTime(elapsedTime)}`);
+  }
+  // 텍스트 객체의 위치와 크기에 맞춰 배경을 그리는 함수
+  drawTextBackground(textObject, padding, cornerRadius) {
+    // getBounds()를 통해 텍스트의 실제 위치와 크기를 가져옵니다.
+    const bounds = textObject.getBounds();
+    this.uiBackground.fillRoundedRect(
+      bounds.x - padding,
+      bounds.y - padding,
+      bounds.width + padding * 2,
+      bounds.height + padding * 2,
+      cornerRadius
+    );
   }
 }

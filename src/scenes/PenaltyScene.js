@@ -19,11 +19,26 @@ export default class PenaltyScene extends Phaser.Scene {
     this.predictedComputerChoice = null;
     this.isTieAsWinActive = false;
   }
+  // preload 함수를 추가하여 페널티룸 배경을 불러옵니다.
+  preload() {
+    this.load.image("penaltyBg", "assets/images/bg_penalty.png");
+    this.load.image("rock", "assets/images/rock.png");
+    this.load.image("paper", "assets/images/paper.png");
+    this.load.image("scissors", "assets/images/scissors.png");
+  }
 
   create() {
     const { width, height } = this.scale;
 
-    // --- UI 텍스트 ---
+    // --- 배경 이미지 추가 ---
+    this.add
+      .image(width / 2, height / 2, "penaltyBg")
+      .setOrigin(0.5)
+      .setDepth(0);
+
+    // --- UI 텍스트 --- (기존 코드)
+    // 모든 UI 요소들이 배경보다 위에 보이도록 setDepth(1)을 추가하거나,
+    // 배경의 setDepth(0) 보다 높은 값을 설정합니다.
     this.add
       .text(
         width / 2,
@@ -35,16 +50,29 @@ export default class PenaltyScene extends Phaser.Scene {
           fontStyle: "bold",
         }
       )
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(1);
+
     this.predictionText = this.add
       .text(width / 2, height * 0.2, "", { fontSize: "20px", color: "#00ffff" })
       .setOrigin(0.5);
     this.countdownText = this.add
       .text(width / 2, height * 0.35, "", { fontSize: "72px", color: "#fff" })
       .setOrigin(0.5);
-    this.computerChoiceText = this.add
-      .text(width / 2, height * 0.5, "", { fontSize: "24px", color: "#fff" })
-      .setOrigin(0.5);
+
+    this.add
+      .text(width / 2, height * 0.5 - 50, "컴퓨터", {
+        fontSize: "24px",
+        color: "#fff",
+      })
+      .setOrigin(0.5)
+      .setDepth(1);
+
+    this.computerChoiceImage = this.add
+      .image(width / 2, height * 0.5 + 30, "question_mark")
+      .setScale(1.0)
+      .setDepth(1);
+
     this.resultText = this.add
       .text(width / 2, height * 0.6, "3초 안에 선택하세요!", {
         fontSize: "28px",
@@ -53,34 +81,38 @@ export default class PenaltyScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // --- 플레이어 선택 버튼 ---
-    const choices = ["가위", "바위", "보"];
+    const choices = [
+      { name: "가위", texture: "scissors" },
+      { name: "바위", texture: "rock" },
+      { name: "보", texture: "paper" },
+    ];
     this.buttons = [];
-    let buttonX = 70;
+    const buttonY = height * 0.8;
+    const buttonSpacing = width / 4;
+
     choices.forEach((choice, index) => {
-      // 버튼 간격 조정
+      const buttonX = (index + 1) * buttonSpacing;
+
       const button = this.add
-        .text(buttonX, height * 0.75, choice, {
-          fontSize: "32px",
-          color: "#fff",
-          backgroundColor: "#555",
-          padding: { x: 20, y: 10 },
-        })
+        .image(buttonX, buttonY, choice.texture)
         .setOrigin(0.5)
-        .setInteractive();
+        .setScale(3.0)
+        .setInteractive()
+        .setDepth(1);
+
       button.on("pointerdown", () => {
         if (
           this.roundTimer &&
           !this.roundTimer.paused &&
           this.playerChoice === null
         ) {
-          this.playerChoice = choice;
-          this.buttons.forEach((btn) => btn.setAlpha(0.5));
-          button.setAlpha(1).setScale(1.1);
+          this.playerChoice = choice.name; // 로직 처리를 위해 이름 저장
+          this.buttons.forEach((btn) => btn.setAlpha(0.5)); // 선택 안 된 것들 흐리게
+          button.setAlpha(1).setScale(1.2); // 선택된 것 강조
           this.buttons.forEach((btn) => btn.disableInteractive());
         }
       });
       this.buttons.push(button);
-      buttonX += 120;
     });
 
     // --- 아이템 사용 버튼 ---
@@ -116,6 +148,17 @@ export default class PenaltyScene extends Phaser.Scene {
     this.timeMachineButton.on("pointerdown", this.useTimeMachine, this);
     this.tieAsWinButton.on("pointerdown", this.useTieAsWin, this);
 
+    this.computerChoiceAnimation = this.time.addEvent({
+      delay: 100, // 0.1초마다 이미지를 변경합니다. (속도 조절 가능)
+      callback: () => {
+        const textures = ["rock", "paper", "scissors"];
+        const randomTexture = Phaser.Math.RND.pick(textures);
+        this.computerChoiceImage.setTexture(randomTexture);
+      },
+      callbackScope: this,
+      loop: true,
+      paused: true, // 처음에는 멈춤 상태로 시작
+    });
     // 라운드 시작
     this.startRound();
   }
@@ -167,11 +210,15 @@ export default class PenaltyScene extends Phaser.Scene {
     this.playerChoice = null;
     this.countdown = 3;
 
+    // 이미지 버튼들 초기화
     this.buttons.forEach((button) =>
-      button.setInteractive().setAlpha(1).setScale(1)
+      button.setInteractive().setAlpha(1).setScale(1.0)
     );
+    // 컴퓨터 선택 이미지를 물음표로 초기화
+    this.computerChoiceImage.setTexture("question_mark");
+    this.computerChoiceAnimation.paused = false;
+
     this.countdownText.setText(this.countdown);
-    this.computerChoiceText.setText("");
     this.resultText.setText("3초 안에 선택하세요!").setColor("#FFD700");
 
     this.roundTimer = this.time.addEvent({
@@ -192,10 +239,12 @@ export default class PenaltyScene extends Phaser.Scene {
   }
 
   resolveRound() {
+    this.computerChoiceAnimation.paused = true;
+
     this.buttons.forEach((button) => button.disableInteractive().setAlpha(0.5));
 
     if (this.playerChoice === null) {
-      this.computerChoiceText.setText("아무것도 내지 않았습니다.");
+      // this.computerChoiceText.setText("아무것도 내지 않았습니다.");
       this.resultText.setText("시간 초과! 패배...").setColor("#ff4444");
       this.time.delayedCall(2000, () => this.startRound());
       return;
@@ -204,9 +253,17 @@ export default class PenaltyScene extends Phaser.Scene {
     const computerChoice =
       this.predictedComputerChoice ||
       Phaser.Math.RND.pick(["가위", "바위", "보"]);
-    this.computerChoiceText
-      .setText(`컴퓨터: ${computerChoice}\nvs\n플레이어: ${this.playerChoice}`)
-      .setStyle({ fontSize: "24px", color: "#fff", textAlign: "center" });
+
+    // ▼▼▼▼▼ 컴퓨터 선택을 텍스트 대신 이미지로 보여주기 ▼▼▼▼▼
+    let computerChoiceTexture;
+    if (computerChoice === "가위") computerChoiceTexture = "scissors";
+    if (computerChoice === "바위") computerChoiceTexture = "rock";
+    if (computerChoice === "보") computerChoiceTexture = "paper";
+
+    this.computerChoiceImage.setTexture(computerChoiceTexture);
+    // this.computerChoiceText
+    //   .setText(`컴퓨터: ${computerChoice}\nvs\n플레이어: ${this.playerChoice}`)
+    //   .setStyle({ fontSize: "24px", color: "#fff", textAlign: "center" });
 
     if (
       (this.playerChoice === computerChoice && this.isTieAsWinActive) ||

@@ -6,8 +6,29 @@ export default class LandingScene extends Phaser.Scene {
     super("LandingScene");
   }
 
+  preload() {
+    this.load.image("loadingBg", "assets/images/bg_loading.png");
+  }
+
   create() {
     const { width, height } = this.scale;
+
+    // --- 배경 이미지 추가 ---
+    this.add
+      .image(width / 2, height / 2, "loadingBg")
+      .setOrigin(0.5)
+      .setDepth(0);
+
+    // 1. 게임 제목 (기존 코드)
+    this.add
+      .text(width / 2, 80, "재난 안전 방탈출", {
+        fontSize: "36px",
+        color: "#fff",
+        fontStyle: "bold",
+        fontFamily: "Arial",
+      })
+      .setOrigin(0.5)
+      .setDepth(1); // 제목이 배경보다 위에 오도록 Depth 설정
 
     // 1. 게임 제목 (Phaser Text Object)
     // TODO: 위치 변경
