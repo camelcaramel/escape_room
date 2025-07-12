@@ -136,7 +136,6 @@ export default class GameScene extends Phaser.Scene {
   useHint() {
     const questionData = this.quizData[this.gameData.currentQuestionIndex];
 
-    // 힌트 아이템이 없거나, 문제가 4지선다가 아니거나, 이미 힌트를 사용했을 경우 무시
     if (
       this.gameData.items.hint <= 0 ||
       questionData.choices.length !== 4 ||
@@ -145,11 +144,10 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.gameData.items.hint--; // 아이템 소모
+    this.gameData.items.hint--;
     this.updateItemUI();
-    this.hintUsedOnCurrentQuestion = true; // 현재 문제에 힌트 사용했다고 표시
+    this.hintUsedOnCurrentQuestion = true;
 
-    // 오답 포털 목록 찾기
     const incorrectPortals = [];
     this.portals.getChildren().forEach((portal) => {
       if (!portal.getData("isCorrect")) {
@@ -157,17 +155,17 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // 제거할 오답 포털 하나를 무작위로 선택
     const portalToRemove = Phaser.Math.RND.pick(incorrectPortals);
 
-    // 해당 포털과 연결된 텍스트를 찾아서 함께 비활성화
     this.portals.getChildren().forEach((portal, index) => {
       if (portal === portalToRemove) {
-        // 포털을 비활성화하고 시각적으로 어둡게 처리
         portal.disableInteractive();
-        portal.setTint(0x555555); // 회색으로 틴트
+        portal.setTint(0x555555);
 
-        // 연결된 선택지 텍스트도 어둡게 처리
+        // ▼▼▼▼▼ 추가된 부분 ▼▼▼▼▼
+        portal.setData("isDisabled", true); // 포털이 비활성화되었음을 데이터로 저장
+        // ▲▲▲▲▲ 추가된 부분 ▲▲▲▲▲
+
         this.choiceTexts[index].setTint(0x555555);
       }
     });
@@ -201,14 +199,33 @@ export default class GameScene extends Phaser.Scene {
     // --- 여기까지 ---
 
     const cards = [];
-    const cardSpacing = 200;
-    const startX = this.scale.width / 2 - cardSpacing;
+
+    // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+    const cardScale = 0.1; // 카드의 스케일
+    const numCards = 3; // 카드의 개수
+
+    // 전체 카드들이 차지할 너비를 계산합니다. (카드 너비 * 개수)
+    // 실제 카드 이미지의 너비(1024px)에 스케일을 곱하여 계산해야 합니다.
+    // get(config)에서 정의한 width인 360을 사용하면 됩니다.
+    const cardWidth =
+      this.textures.get("card").getSourceImage().width * cardScale;
+
+    // 카드 사이의 간격을 계산합니다.
+    const spacing = (this.scale.width - cardWidth * numCards) / (numCards + 1);
+
+    // 첫 번째 카드의 x 위치를 계산합니다.
+    let startX = spacing + cardWidth / 2;
+    // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
 
     for (let i = 0; i < 3; i++) {
+      // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+      const cardX = startX + i * (cardWidth + spacing);
       const card = this.add
-        .sprite(startX + i * cardSpacing, this.scale.height / 2, "card")
-        .setScale(0.1)
+        .sprite(cardX, this.scale.height / 2, "card") // 계산된 x 위치 적용
+        .setScale(cardScale) // 변수로 스케일 설정
         .setInteractive();
+      // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
+
       // 섞인 보상을 각 카드에 'outcome'이라는 데이터로 저장합니다.
       card.setData("outcome", shuffledRewards[i]);
       cards.push(card);
@@ -353,7 +370,6 @@ export default class GameScene extends Phaser.Scene {
       ];
     }
 
-    // positions 배열에 따라 포털과 텍스트 생성
     positions.forEach((pos, index) => {
       const portal = this.portals.create(pos.x, pos.y, "portal").setScale(0.3);
       portal.setData("isCorrect", index === questionData.answer);
@@ -361,17 +377,19 @@ export default class GameScene extends Phaser.Scene {
       portal.setInteractive();
 
       portal.on("pointerdown", () => {
-        if (this.isPlayerMoving) return;
+        // ▼▼▼▼▼ 수정된 부분 ▼▼▼▼▼
+        // isPlayerMoving 상태이거나, 힌트로 비활성화된 포털이면 아무것도 하지 않음
+        if (this.isPlayerMoving || portal.getData("isDisabled")) return;
+        // ▲▲▲▲▲ 수정된 부분 ▲▲▲▲▲
         this.moveToPortal(portal);
       });
 
-      // 포털 아래에 선택지 텍스트 표시
       const choiceText = this.add
         .text(pos.x, pos.y + 60, choices[index], {
           fontSize: "18px",
           color: "#fff",
           align: "center",
-          wordWrap: { width: 120 }, // 텍스트가 길 경우 줄바꿈
+          wordWrap: { width: 120 },
         })
         .setOrigin(0.5);
       this.choiceTexts.push(choiceText);
