@@ -12,14 +12,14 @@ export default class LeaderboardScene extends Phaser.Scene {
 
     this.add
       .text(width / 2, 50, "명예의 전당", {
-        fontSize: "48px",
+        fontSize: "36px", // 타이틀 폰트 크기 조정
         color: "#FFD700",
       })
       .setOrigin(0.5);
 
     const loadingText = this.add
       .text(width / 2, height / 2, "순위를 불러오는 중...", {
-        fontSize: "24px",
+        fontSize: "20px", // 로딩 텍스트 폰트 크기 조정
         color: "#fff",
       })
       .setOrigin(0.5);
@@ -30,30 +30,32 @@ export default class LeaderboardScene extends Phaser.Scene {
     if (rankings.length === 0) {
       this.add
         .text(width / 2, height / 2, "아직 등록된 순위가 없습니다.", {
-          fontSize: "24px",
+          fontSize: "20px", // 안내 텍스트 폰트 크기 조정
           color: "#fff",
         })
         .setOrigin(0.5);
     } else {
-      // 순위 헤더
-      this.add.text(100, 120, "순위", { fontSize: "20px", color: "#fff" });
-      this.add.text(250, 120, "이름", { fontSize: "20px", color: "#fff" });
-      this.add.text(450, 120, "소속", { fontSize: "20px", color: "#fff" });
-      this.add.text(650, 120, "기록(초)", { fontSize: "20px", color: "#fff" });
+      // --- 헤더 ---
+      const headerY = 120;
+      const headerStyle = { fontSize: "18px", color: "#fff" };
+      this.add.text(width * 0.1, headerY, "순위", headerStyle).setOrigin(0.5);
+      this.add.text(width * 0.3, headerY, "이름", headerStyle).setOrigin(0.5);
+      this.add.text(width * 0.55, headerY, "소속", headerStyle).setOrigin(0.5);
+      this.add
+        .text(width * 0.85, headerY, "기록(초)", headerStyle)
+        .setOrigin(0.5);
 
-      // 순위 목록 표시 (상위 10개)
-      rankings.slice(0, 10).forEach((rank, index) => {
-        const y = 160 + index * 40;
-        this.add.text(100, y, `${index + 1}`, {
-          fontSize: "18px",
-          color: "#fff",
-        });
-        this.add.text(250, y, rank.name, { fontSize: "18px", color: "#fff" });
-        this.add.text(450, y, rank.class, { fontSize: "18px", color: "#fff" });
-        this.add.text(650, y, rank.time.toFixed(2), {
-          fontSize: "18px",
-          color: "#fff",
-        });
+      // --- 순위 목록 ---
+      const listStyle = { fontSize: "16px", color: "#fff" };
+      rankings.slice(0, 15).forEach((rank, index) => {
+        // 15개까지 표시되도록 늘림
+        const y = 170 + index * 35; // 간격 조정
+        this.add.text(width * 0.1, y, `${index + 1}`, listStyle).setOrigin(0.5);
+        this.add.text(width * 0.3, y, rank.name, listStyle).setOrigin(0.5);
+        this.add.text(width * 0.55, y, rank.class, listStyle).setOrigin(0.5);
+        this.add
+          .text(width * 0.85, y, rank.time.toFixed(2), listStyle)
+          .setOrigin(0.5);
       });
     }
 

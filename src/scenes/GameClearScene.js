@@ -13,6 +13,11 @@ export default class GameClearScene extends Phaser.Scene {
     console.log("GameClearScene init", this.playerInfo, this.gameData);
   }
 
+  preload() {
+    // 필요한 이미지나 리소스를 미리 불러옵니다.
+    this.load.image("clearBg", "assets/images/bg_game_clear.jpg");
+  }
+
   async create() {
     const { width, height } = this.scale;
     console.log("GameClearScene create", this.playerInfo, this.gameData);
@@ -27,12 +32,18 @@ export default class GameClearScene extends Phaser.Scene {
       completionTime
     );
 
+    // --- 배경 이미지 추가 ---
+    this.add
+      .image(width / 2, height / 2, "clearBg")
+      .setOrigin(0.5)
+      .setDepth(0);
+
     // --- UI 요소 ---
     this.add
       .text(
         width / 2,
         height / 2 - 150,
-        `축하합니다, ${this.playerInfo.nickname}!\n\n모든 문제를 클리어했습니다!`,
+        `축하합니다, ${this.playerInfo.nickname}!\n\n모든 문제를\n클리어했습니다!`,
         {
           fontSize: "34px",
           color: "#00ff00",
